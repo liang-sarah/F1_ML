@@ -1,0 +1,1140 @@
+---
+title: "Predicting 2023 Formula One World Constructors' Championship Standings"
+subtitle: "PSTAT 131 Final Project"
+author: "Sarah Liang"
+date: "2/2/2023"
+output:
+  html_document:
+    theme: simplex
+    toc: true
+    toc_float: true
+    toc_depth: 4
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE,
+                      warning = FALSE)
+```
+## Introduction
+The goal of this project is to build a machine learning model to predict the Formula One World Constructors' Championship Standings for the upcoming 2023 season.
+\
+\
+
+### What is Formula One? What are constructors?
+Formula One, or shorthand F1, is open wheel, single-seater car racing at the highest level. There are a total of ten constructors, or racing teams, that are tasked with the goal of constructing a F1 car prior to the annual racing season. During each race season, ten constructors compete with their newly launched F1 cars for a position from first to tenth in the World Constructors' Championship Standings. Each constructor employs two drivers. These drivers also compete for a place from first, i.e. World Champion, to twentieth, in the World Drivers' Championship Standings. The F1 race season is overlooked and regulated by the Fédération Internationale de l'Automobile (FIA).\
+\
+Racing occurs over a weekend such that Fridays are for free practice, Saturdays are for qualifying, and Sundays are race days. During a race, finishing positions first to tenth earn points from 25, 18, 15, 12, 10, 8, 6, 4, 2, and 1 respectively. The number of races, or grand prix, may vary every year. The upcoming 2023 season has 23 races on the calendar, as opposed to the 2022 F1 calendar consisting of 22 races. Some races are new, and some drivers are new. This may pose some difficulty later on, so best we mention it now.
+\
+
+__What is Free Practice?__
+  \
+_On Fridays, constructor teams put out their two drivers on the circuit to collect data about the car, get a feel of how the car handles the track, and in general obtain as much practice and knowledge to prepare and perform during qualifying and race day._
+  \
+  
+__How Qualifying Works:__
+  \
+_On Saturdays, drivers will have allotted time to record a fast lap time for Q1, in which the five slowest drivers are cut off (positions 16 to 20). Then Q2 begins and then the remaining fifteen drivers have allotted time to record another fast lap time, during which the five slowest drivers of the remaining fifteen are cut off (positions 11 to 15). During Q3, the remaining ten drivers will record a final fast lap time to earn a position from 1 to 10. The last position a driver earned before cut off or the end of Q1 determines the position they will start from during Sunday race day._
+\
+
+\
+\
+
+### Why F1?
+Formula One, an inherently European-rooted sport, has gained immense popularity recently in the United States, partially due to a Netflix show "Drive to Survive" covering the motor sport. While the show itself is highly dramatized and an inaccurate representation of actual race events at times, I developed an interest like many others in the sport and began watching archived races, qualifying sessions, and more. It is known amongst fans and followers of the sport that racing teams with a higher budget and access to rich resources tend to fare better in Constructors' Championship Standings. For many years, wealthy and heavily-sponsored constructors like Mercedes, Ferrari, and Red Bull have occupied the higher ranks of the World Championship. However, in recent years the FIA has instated a budget cap and other regulations in hopes of leveling the playing field. With the upcoming 2023 season kicking off, I am inclined to predict the results for the 2023 season, not only for my own fun, but also to see if the FIA's regulations are contributing to the beginning of a new era of competition in F1 racing.
+\
+\
+\
+
+## Exploring and Modifying Data
+We are going to begin this project by just taking a general look at the data and consider what we need to do to construct a data set we can work with, i.e. missing data, useful and/or not useful variables, necessary key/ID values, manipulating and/or converting variables, etc.
+\
+\
+
+### Data Source
+To obtain the data, I will be using [Ergast Developer API](http://ergast.com/mrd/db/) which includes documentation of F1 stats since the beginning of World Championships in 1950. However, I will be downloading the [csv files](http://ergast.com/mrd/db/#csv) from the API website instead of pulling data with the actual API, for convenience purposes. I may also get further information for certain variables from the official [F1 website archive](https://www.formula1.com/en/results/archive-1950-2016.html).\
+\
+The different csv files are all data sets individually, some of which act as lookup tables for others. We are tasked to combine the data sets efficiently into a single one before any analyzing or model building.
+\
+\
+
+### Loading Packages and Exploring the Data 
+<font size="3"> __Code in file read_data.rda__ </font>
+\
+
+Let's begin by loading our relevant packages, `set.seed`, reading in our csv files that we downloaded from the API website, and taking a quick look at some of our variables.
+```{r collapse=TRUE}
+library(tidyverse)
+library(tidymodels)
+library(kknn)
+library(ggplot2)
+library(corrplot)
+library(ggthemes)
+library(kableExtra)
+library(parsnip)
+library(recipes)
+library(magrittr)
+library(workflows)
+library(glmnet)
+library(themis)
+library(ranger)
+library(vip)
+library(naniar)
+library(visdat)
+library(dplyr)
+library(ISLR)
+set.seed(2536)
+
+load("C://Users//waliang//Documents//UCSB//third year//pstat 131//read_data.rda")
+```
+
+\
+Here is a general summary of what each data set involves:
+\
+
+- `circuit` - uniquely identified circuits with their locations\
+- `races` - uniquely identified races with their round number and locations since 1950\
+- `seasons` - list of years of race seasons\
+- `results` - collection of results for each driver at each race\
+- `drivers` - uniquely identified drivers since 1950\
+- `driver_standings` - uniquely identified record of position in Drivers' Championship Standings at the result of a certain race\
+- `constructors` - uniquely identified constructor teams since 1950\
+- `constructor_results` - uniquely identified record of points earned for some constructor at a certain race\
+- `constructor_standings` - uniquely identified record of position in Constructors' Championship Standings at the result of a certain race\
+- `status` - lookup table data set of status key value pairs\
+- `lap_times` - all lap times for each driver at each race\
+- `pit_stops` - pit stop times for each driver at each race\
+- `qualifying` - qualifying results for each race\
+- `sprint_results` - sprint qualifying results for each driver at certain races that included sprint qualifying
+\
+\
+
+Here are some things to consider:
+\
+
+1.    Since a constructor's standing is determined by how many points they've accumulated throughout the race season relative to other teams, it would be ideal to include a `points` variable as our response. Also, the amount of points a constructor obtains is dependent on how many point their drivers are able to obtain at races. So, the response variable can come from and/or be calculated from the `results`, `constructor_results`, `constructor_standings`, or `driver_standings` data sets.\
+
+2.    There may be missing data because there will be three rookie drivers entering the 2023 F1 season: Oscar Piastri, Nyck De Vries, and Logan Sargeant. So, it would be hard to predict the next season with no F1 data regarding these three drivers. I will probably take data from previous Formula Two seasons for these drivers, because F2 races concurrently with the F1 season on the same circuits. We can consider `number of points earned for the drivers` as a measurement of how "good" these drivers are. However, since the sum of number of points two drivers earn is the number of points those drivers' constructor earns, we may have some structural collinearity between driver points and constructor points. Though some drivers often change constructors as well, so it is worth being cautious here.\
+
+3.    Some constructor teams have changed their names over the years (ex. Force India changed to Racing Point Force India then changed to Racing Point then changed to Aston Martin), so data will be scattered around the data set. Despite the different names, we are grouping these "different, but same" teams because important factors like car part suppliers, important partnerships, etc. are usually the same regardless of the official name change. So, we will have to align the different `team names`. all under one name, preferably the most recent and relevant one.\
+\
+\
+\
+
+
+```{r}
+levels(factor(constructor_results$status))
+```
+As we can see the `status` variable of the `constructor_results` data set reflects two levels, `\\N` missing and `D` disqualified.
+
+```{r}
+# merge constructor names w/ results data set on Id variable
+merge_test <- full_join(constructors[,c(1,3)], constructor_results, by="constructorId")
+merge_test <- full_join(races[,c(1:3)], merge_test, by="raceId")
+
+merge_test %>%
+  filter(status == "D")
+```
+Here we discover this disqualification is because McLaren was disqualified in the 2007 Championship because of the [2007 Espionage Controversy](https://en.wikipedia.org/wiki/2007_Formula_One_espionage_controversy). This will come into play later.
+
+
+\
+\
+
+### Modifying Data Sets 
+<font size="3"> __Code in file modify_data.rda__ </font>
+\
+
+The first thing we do in `modify_data.rda` is remove the `url` column from the following data sets: `constructors`, `drivers`, `circuit`, `races`, and `season`.
+\
+
+#### Constructors Related Data Sets
+Let's begin by focusing on the constructors information (points at certain races, position in standings at the result of certain races, etc.). Since the `constructors` data set is largely a lookup table, we will focus on merging `constructor_results` and `constructor_standings` first. Let's do the following modifications:\
+
+1.    rename the `points` variables to clarify whether they are points earned at each race or points accumulated from each race so far in the season.\
+
+2.    remove the 2007 races of McLaren that were labeled as disqualified due to the 2007 Espionage Controversy, as it can be an outlier denoting performance higher than expected for McLaren during those years.
+\
+After doing so, our `constructor_results` and `constructor_standings` are now `con_res` and `con_stand` respectively.
+```{r collapse=TRUE}
+load("C://Users//waliang//Documents//UCSB//third year//pstat 131//modify_data.rda")
+
+head(con_res)
+head(con_stand)
+```
+We will `full_join()` merge `con_res` and `con_stand` by `raceId` and `constructorId`. It should not remove anything, only add/join together rows from both data sets. I am also going to remove the `constructorResultsId` and `constructorStandingsId` columns because there is no need for these identification variables after merging all information together.
+\
+We finish the constructor's section up by adding in the constructor team name `con_name`, reference `constructorRef`, and nationality `con_nation`, using the `constructors`data set as a lookup table.
+\
+
+We also add race information, like circuit name and country, race season year, race name, and more, using the `races` and `circuit` data sets similarly.
+
+```{r collapse=TRUE}
+# finished constructors related data set
+head(merge_con[order(merge_con$raceId),])
+```
+
+\
+\
+
+#### Drivers Related Data Sets
+Let's look at the `drivers`, `driver_standings`, `results`, `lap_times`, `pit_stops`, `qualifiying`, and `sprint_results`  data sets.
+\
+
+Let's begin with a break down of the `qualifying` data set:
+```{r collapse=TRUE}
+dim(qualifying)[1]
+dim(results)[1]
+```
+The number of observations in `qualifying` is much less than that of `results` because the `qualifying` data is only provided starting in 2003. If I were to join the two data sets together, I would have a lot of missing data for the `qualifying` variables.
+```{r collapse=TRUE}
+# 139 missing q1 times (and q2 and q3 given that these drivers were cut off from making it into q2 and q3)
+quali_na
+
+# other than single digit minute timestamps and missing times, we have a double digit q1 timestamp 16:42.640 and more blank missing values
+rest_of_q1
+    # we just have missing q2 values
+rest_of_q2
+    # just missing q3 values
+rest_of_q3
+```
+\
+
+There are some missing `q1` times. This could be due to a car issue that interrupted drivers from finishing their laps. Other than the missing values, we can work with the times. We had to check `q2` and `q3` similarly because I want to work with the three variables in one go. We will want to:\
+
+  1. convert the timestamps into numeric variables\
+  2. only keep the fastest time `q_time` out of `q1`, `q2`, and `q3` to streamline the data and avoid the missing values within the `qualifying` data set\
+  
+By obtaining the fastest time out of three, it gives us a better idea of the maximum potential of the car and/or driver at a certain weekend and circuit. After some renaming of variables for distinction, here is our `quali` data set with our `q_time` variable.
+```{r collapse=TRUE}
+head(quali)   # Looks nice!
+```
+\
+
+Before I merge `quali` to `results`, I want to talk about `sprint_results`.
+\
+
+__Sprint qualifying__ is another form of qualifying, except the traditional qualifying with Q1, Q2, and Q3 is done on Friday along with free practice to determine the starting grid positions for a sprint race. A sprint race is essentially a shorter, 100 kilometer race of which the finishing positions for each driver will determine the starting grid positions for the actual race.
+\
+
+Since `sprint_results` can affect a race result as much as normal qualifying weekends without a sprint race, I would include `sprint_results` as well.
+```{r collapse=TRUE}
+races %>%
+  filter(raceId %in% as.numeric(levels(factor(sprint_results$raceId)))) %>%
+  select(raceId, year, round, name, date)
+```
+Here, we can see that sprint qualifying was a relatively new procedure enacted for the first time in the 2021 season and is only recorded at six races. So, I would like to combine the `start_pos` from `quali` with the `positionOrder` from `sprint_results` to complete the drivers' race start position variable. There are also `points` awarded for the sprint races, but I would prefer to use the overall `points` from the `driver_standings` data set as a better representation of the total points each driver accumulates with the progress of each race weekend.
+```{r}
+# new driv_start_pos after merging quali and sprint_results
+head(merge_quali)
+```
+\
+
+The `results` data set holds a lot of race information especially about individual drivers. The most useful variables (other than the identification variables) seem to be `positionText`, `positionOrder`, `points`, `laps`, `grid` (i.e. starting position), `fastestLapTime`, `rank` (i.e. rank of `fastestLapTime`), and `statusId`. This is the majority of variables in `results`, so I will merge the data sets and combine `grid` and `driv_start_pos` from `merge_quali` as they are the same variable. I will address other missing values later.
+\
+
+```{r collapse=TRUE}
+count(res, res$time=="\\N")
+```
+The `time` variable has more missing than not, which can be due to not finishing a race because of car failure, etc. So, I think `statusId` and `positionText` would be a better representation of the position at which drivers finished their race and in what conditions. Let's remove `time` and `milliseconds` (`time` measured in milliseconds).
+\
+
+Now let's merge our modified `merge_quali` data set and a modified `results` data set.
+```{r collapse=TRUE}
+# remove time, driver number, position, convert lap time, rename variables to be driver specific, convert positionText into factor for results data set
+# this is now our merged data set
+head(merge_res)
+```
+\
+
+Now let's look at the `lap_times` and `pit_stops` data sets. _* Know that `pit_stops` is only from 2012 onward. `lap_times` is from 1996 onward._
+```{r collapse=TRUE}
+# example of McLaren at raceId==1
+lap_times %>%
+  filter(raceId==1 & driverId==1) %>%
+  head()
+
+# example of McLaren pit stops
+pit_stops %>%
+  filter(driverId==1) %>%
+  head()
+```
+The `lap_times` data set has the lap time of every single lap driven in every race by each driver. `pit_stops` has a record of every pit stop made at each race. Keep in mind, the pit stop duration recorded in the `pit_stops` data set is the __entire amount of time a car spends in the pit lane__, not just the amount of time it takes to change tyres. In general, a car usually spends twenty-something seconds in the pit lane. Thus, the pit stop duration can have quite an impact on the outcome of a driver's race, especially if a team struggles to pit quickly, which happens quite often.
+\
+
+To modify these timestamps, I want to create a variable for __average lap time__, __average position__ (rounded), and __average pit stop duration__ for each race given.
+\
+
+_* At each race, drivers are required to pit (typically changing four tyres) at least once. Many times, drivers have to pit more than once. We will be taking the average pit stop duration among all the pits a driver makes at a certain race._
+```{r collapse=TRUE}
+# lap and pit w/ averages
+head(lap)
+head(pit)
+```
+Let's merge `lap` and `pit` to `merge_res`.
+```{r}
+head(merge_res)
+vis_miss(merge_res)
+```
+\
+
+For now, I won't mess with the missing data. It's due to certain data (ex. qualifying times `q_time`, lap times `avg_lap_time`, pit stop durations `avg_pit`) only being available after a certain date.
+\
+
+Let's look at one last data set, `driver_standings`.
+```{r collapse=TRUE}
+# not too different in dimensions is a good thing
+dim(driver_standings)[1]
+dim(merge_res)[1]
+```
+
+Let's begin with renaming:\
+
+1.    `position` and `positionText` to `driv_standing` because it conflicts with race result `position` from before, whereas now this is about the drivers' positions in the Drivers' Championship Standings when accumulating the progress from each race.\
+
+2.    `points` to `sum_driv_pnts` as these are points not earned at each race, but points earned overall from that race as well as past races in the season.
+```{r collapse=TRUE}
+count(races, races$time=="\\N")
+```
+_* I would have liked distinguishing between day and night races using `time` in `races` as that could have a huge impact on tyre degradation and race result, but there is only about 30% non-missing data which can't help us much._
+```{r collapse=TRUE}
+head(driver_stand)
+
+# nothing else to change about standings, let's merge our modified drivers related data set
+# as well as remove unnecessary variables, rename for more distinction, add information from status and drivers data sets (basically using the following as lookup tables)
+head(race)
+head(circ)
+head(stat)
+
+# new merged driver related data set
+head(merge_driv)
+```
+\
+\
+
+#### What about Piastri, Sargeant, and De Vries?
+
+Like I mentioned before, we do have three new rookies drivers for the 2023 F1 season. If we take a look at our data, we will notice that our drivers actually are inputted in the `drivers` data set, with their own `driverId` and other values as well. So, they are also in `merge_driv`, albeit mostly NA missing values.
+```{r}
+drivers %>%
+  filter(driverRef == "piastri" | driverRef == "sargeant" | forename=="Nyck")
+
+# Nyck de Vries completed one race as a reserve driver for Williams
+merge_driv %>%
+  filter(driverId %in% c(856:858))
+```
+\
+
+I did consider inputting F2 and F3 data into our data set to fill out these three drivers. However, I am now against the idea because while there may be similarities between F2, F3, and F1, the race weekends are quite different and I'm afraid adding certain values, but being forced to omit others that don't exist in F2 and F3, would create even more missing data.
+\
+
+There isn't any resource that I could pull data neatly and have it combine nicely with the data set we have now, so I think I will continue without adding extra data, for the sake of time.
+\
+\
+
+
+#### Change of Plans?
+
+Now let's take a look at our two merged data sets: `merge_con` and `merge_driv`.
+```{r collapse=TRUE}
+dim(merge_con)[1]
+dim(merge_driv)[1]
+```
+Considering the 20,000+ difference in observations, which is expected as there are more unique drivers than constructors, I am against merging `merge_con` and `merge_driv`. At this point of the project, my plan of action is changing a little. Instead of trying to consolidate all my data into a single data set and modelling of of that, I am seriously considering modelling off of __two__ data sets:\
+
+1.    Use `merge_con` to predict response variable `con_pos`, using predictors specific to the effect of each individual constructor\
+
+2.    Use `merge_driv` to predict `driv_pnts`, using predictors specific to the effect of each individual driver. We can predict `driv_pnts` of our 2023 drivers and sum the drivers corresponding to their 2023 constructor teams and rank the constructors accordingly.
+\
+
+I think this plan is definitely doable, and is not entirely too far off from our original plan. We could just use `merge_con` and proceed with our modelling, but I feel like there is so much potential with the data in `merge_driv` that it would be a shame not to use it. However, with the lack of data around our three rookie drivers, perhaps the `merge_con` method would fare better for our prediction goal.
+\
+\
+
+
+### Finalized Data Set(s) and Codebook(s)
+
+Here is our two finalized data sets, as well as a codebook for both:
+```{r}
+head(merge_con)
+```
+<font size="3"> __merge_con Codebook__ </font>\
+
+`raceId` - unique race identifier; numeric\
+`constructorId` - unique constructor identifier; numeric\
+`con_pnts` - number of points a constructor earns at a certain race; numeric\
+`con_sum_pnts` - total number of points a constructor earned so far in the race season including that certain race; numeric\
+`con_pos` - a constructor's position in the Constructors' Championship Standings at the point of that certain race during the race season; numeric\
+`con_posText` - `con_pos`; character\
+`con_wins` - number of wins a constructor earned so far in the race season including that certain race; numeric\
+`constructorRef` - constructor reference name; character\
+`con_name` - constructor name; character\
+`con_nation` - nationality of constructor team; character\
+`season` - year of race season; numeric\
+`round` - race order (1 = first race, 2 = second, etc.) in the race season; numeric\
+`circuitId` - unique circuit identifier; numeric\
+`race_name` - name of grand prix; character\
+`circ_country` - country circuit is located in; character\
+`circuitRef` - circuit reference name; character\
+`circ_name` - name of circuit; character
+\
+
+```{r}
+head(merge_driv)
+```
+<font size="3"> __merge_driv Codebook__ </font>\
+
+`raceId` - unique race identifier; numeric\
+`driverId` - unique driver identifier; numeric\
+`constructorId` - unique constructor identifier; numeric\
+`driv_positionText` - a driver's finishing race position at that certain race; factor; includes the following:\
+
+  `D` - disqualified\
+  `E` - excluded\
+  `F` - failed to qualify\
+  `N` - not classified\
+  `R` - retired\
+  `W` - withdrawn\
+
+`driv_positionOrder` - a driver's place in the finishing order of that certain race; numeric\
+`driv_pnts` - number of points a driver earns at a certain race; numeric\
+`laps` - number of laps a driver completed in the race; numeric\
+`fastestLap` - the lap number during which a driver drove their fastest lap during the race; character\
+`fastestLapTime_rank` - the rank of a driver's fastest lap time among that of the other drivers during the race; character\
+`fastestLapTime` - a driver's fastest lap time during the race in seconds; numeric\
+`fastestLapSpeed` - fastest speed reached during a driver's fastest lap; character\
+`driv_statusId` - unique status identifier for the condition in which a driver finished their race; numeric\
+`q_time` - fastest qualifying fast lap time (out of Q1, Q2, and Q3) that a driver completed during that race weekend's qualifying session; numeric\
+`driv_start_pos` - a driver's starting grid position for that certain race; numeric\
+`avg_lap_time` - average of all of a driver's lap times during a race; numeric\
+`avg_lap_pos` - rounded average of all positions a driver was at during a race; numeric\
+`avg_pit` - average pit stop duration of a driver during a race; numeric\
+`sum_driv_pnts` - total number of points a driver earned so far in the race season including that certain race; numeric\
+`driv_standing` - a driver's position in the Drivers' Championship Standings at the point of that certain race during the race season; numeric\
+`driv_standingText` - `driv_standing`; character; including the following:\
+
+  `D` - disqualified\
+`driv_wins` - number of wins a driver earned so far in the race season including that certain race; numeric\
+`status` - the condition in which a driver finished their race; factor
+
+\
+\
+
+
+## Exploratory Data Analysis
+<font size="3"> __Code in file eda.rda__ </font>
+\
+
+### Missing Data
+Let's take a look at the missing data in `merge_con`.
+```{r}
+load("C://Users//waliang//Documents//UCSB//third year//pstat 131//eda.rda")
+
+vis_miss(merge_con)
+```
+\
+
+Let's arrange each constructor's result in order throughout each race season and fill in `con_pnts` and `con_sum_pnts` using each other (since `con_sum_pnts` is an accumulation of `con_pnts` throughout the season).
+```{r eval=FALSE}
+merge_con1 <- merge_con %>%
+  # arrange each constructor's result in order throughout season
+  arrange(constructorId, season, raceId, round, con_sum_pnts) %>%
+  # replace con_sum_pnts missing values with the actual value using the other con_pnts column
+  mutate(con_sum_pnts = case_when((is.na(con_sum_pnts) & season==lag(season) & is.na(con_pnts)!=TRUE) ~ lag(con_sum_pnts)+con_pnts,
+                                  (is.na(con_sum_pnts) & season!=lag(season) & is.na(con_pnts)!=TRUE) ~ con_pnts,
+                                  is.na(con_sum_pnts)!=TRUE ~ con_sum_pnts))
+
+
+# vice versa
+merge_con2 <- merge_con1 %>%
+  arrange(constructorId, season, raceId, round, con_sum_pnts) %>%
+  mutate(con_pnts = case_when((is.na(con_pnts) & season==lag(season) & is.na(con_sum_pnts)!=TRUE) ~ con_sum_pnts-lag(con_sum_pnts),
+                              (is.na(con_pnts) & season!=lag(season) & is.na(con_sum_pnts)!=TRUE) ~ con_sum_pnts,
+                              is.na(con_pnts)!=TRUE ~ con_pnts))
+
+# and again the first direction for good measure
+merge_con3 <- merge_con2 %>%
+   arrange(constructorId, season, raceId, round, con_sum_pnts) %>%
+   mutate(con_sum_pnts = case_when((is.na(con_sum_pnts) & season==lag(season) & is.na(con_pnts)!=TRUE) ~ lag(con_sum_pnts)+con_pnts,
+                                   (is.na(con_sum_pnts) & season!=lag(season) & is.na(con_pnts)!=TRUE) ~ con_pnts,
+                                   is.na(con_sum_pnts)!=TRUE ~ con_sum_pnts))
+```
+
+
+```{r}
+vis_miss(merge_con3)
+merge_con3$constructorRef <- factor(merge_con3$constructorRef)
+```
+\
+
+After fixing `con_pnts` and `con_sum_pnts`, we have a lot less missing data. The missing values in `con_pos`, `con_posText`, and `con_wins` is somewhat minimal. We can deal with these missing values during recipe creation using a linear regression of other variables that measure a constructors progress throughout the race season, like `con_pnts` and `con_sum_pnts`.
+\
+
+Other than this, we don't have a lot of missing data and the data set is pretty usable.
+\
+\
+
+Now let's work on `merge_driv` similarly.
+```{r}
+vis_miss(merge_driv, warn_large_data = FALSE)
+```
+\
+
+That's a lot of missing data. There are some drivers with no constructor team! Let's look at those first.
+```{r collapse=TRUE}
+dim(merge_driv %>%
+  filter(is.na(constructorId)))[1]
+dim(merge_driv)[1]
+```
+There are 8646 out of 34496 observation with missing values from `constructorId` to `avg_pit` and `status`. My guess is that when I was joining data sets that had information available  only after a certain year, like `quali`, `pit`, and even `results`, then that conflicted with `driver_standings` that had a lot of data starting from the beginning of F1, leaving empty spots in variables only available after a certain date.
+\
+
+I don't want to just remove these observations, since they still have data for `driv_standing` and `driv_wins`. Some of the missing variables that I would prefer to have, like `driv_positionOrder`, `driv_pnts`, and `driv_start_pos`, are measures of the success of each driver at each race and throughout the season, similar to `driv_standing` and `driv_wins`. However, I think I will be forced to remove the rows with missing `constructorId` because I will have trouble imputing a categorical variable (`constructorId` is a factor). 
+```{r}
+vis_miss(merge_driv1)
+
+```
+\
+
+Deal with missing `driv_standing` and `driv_wins` so we can easily impute the other variables in the recipe later on.
+```{r collapse=TRUE}
+dim(merge_driv1 %>%
+      filter(is.na(driv_standing)))[1]
+```
+
+```{r eval=FALSE}
+merge_driv2 <- merge_driv1 %>%
+  group_by(driverId, round) %>%
+  # replace missing driv_standing with the median of the standings the driver gets in that round across seasons
+  summarise(driv_standing_na = as.integer(median(driv_standing,na.rm=TRUE)))
+
+merge_driv3 <- full_join(merge_driv1, merge_driv2, by=c("driverId","round"))
+
+merge_driv3 <- merge_driv3 %>%
+  mutate(driv_standing = 
+           case_when(is.na(driv_standing) ~ driv_standing_na,
+                     !is.na(driv_standing) ~ driv_standing))
+```
+
+```{r collapse=TRUE}
+dim(merge_driv3 %>%
+  filter(is.na(driv_standing)))[1]
+```
+By replacing missing `driv_standing` with the median of such in that round number across all seasons, we reduce the missing standing values from 469 to 91. This is a pretty good effort to save some of our data. Then we can omit the 91 missing values.
+\
+
+```{r eval=FALSE}
+# omit the rest of missing driv_standing
+merge_driv4 <- merge_driv3 %>%
+  filter(!is.na(driv_standing))
+```
+
+```{r}
+vis_miss(merge_driv4, warn_large_data = FALSE)
+```
+\
+
+We can work with this. It'll get better when imputing during recipe creation.
+
+\
+\
+
+
+
+
+### Visual EDA
+
+Let's look at some of the relationships between our variables.
+\
+
+#### Constructor and Driver Points
+Let's take a look at our possible response variables `con_pos` and `driv_pnts`.
+```{r collapse=TRUE}
+grid.arrange(plot_con, plot_driv, ncol=2)
+```
+\
+```{r collapse=TRUE}
+range((merge_con3 %>%
+         filter(!is.na(con_pos))
+         )$con_pos)
+
+range((merge_con3 %>%
+  filter(con_pos==tail(unique(sort((merge_con3 %>%
+         filter(!is.na(con_pos))
+         )$con_pos)))) %>%
+  select(con_pos,con_name, season, race_name, circ_name))$season)
+
+range((merge_con3 %>%
+  filter(con_pos==tail(unique(sort((merge_con3 %>%
+         filter(!is.na(con_pos))
+         )$con_pos)))) %>%
+  select(con_pos,con_name, season, race_name, circ_name))$season)
+
+range((merge_driv4 %>%
+         filter(!is.na(driv_pnts))
+         )$driv_pnts)
+```
+The `con_pos` data is from 1 to 22. The constructors with very high positions are pre-2000 (from 1963 to 1991), because now there are only ten constructors each season. The range of `driv_pnts` for the data and possibility is from 0 to 50 (first place at 2014 Abu Dhabi).
+\
+
+_* At the 2014 Abu Dhabi Grand Prix, the FIA rewarded double points. So, instead of the usual 25 to 1 point range, first place to tenth place earned 50, 36, 30, 24, 20, 16, 12, 8, 4, and 2 respectively. Understandably, double points was never done again._
+
+\
+
+\
+
+
+#### Correlation Plots
+Let's look at some possible relationships between our variables.
+```{r}
+# remove na, identification variables, only numeric
+corrplot(cor(merge_con3 %>%
+               select_if(is.numeric)%>%
+               na.omit()), method="shade", diag=FALSE,addCoef.col=1,number.cex = 1, type="lower")
+```
+\
+
+In the `merge_con3` data set, we have a positive correlation between `con_wins` and `con_pnts` of which makes sense, the more points a constructor earns, the more likely it is the constructor's drivers won races. There is also a negative correlation between `con_wins` and `con_pos` of, which is also obvious because the more positions a constructor is away from the top of the standings, the less likely that constructor is to win races. `round` and `con_sum_pnts` are positively correlated at, so the more races a constructor completes and the more of the race season that passes, the more points a constructor accumulates. On the other hand, `round` and `con_pnts` are not as positively correlated at because actually making quick progress and improvement during the race season to earn more and more points consistently as the season goes on is a difficult thing to do as an entire constructor team, even if it is what every team desires. The positive correlation between `season` and `con_pnts`/`con_sum_pnts` is obvious because over time the FIA increased not only the number of points rewarded, but also the number of race finishing positions they reward points to. We also have a negative correlation of between `con_pos` and `con_pnts`/`con_sum_pnts`. This is due to similar reasons as with `con_wins` and `con_pos`.
+
+```{r out.width = '110%'}
+# remove na, q_time has too much na, and identification variables, only numeric
+corrplot(cor(merge_driv4 %>%
+               select_if(is.numeric) %>%
+               na.omit()), method="shade",addCoef.col = 1,number.cex = 0.5, type="lower",diag=FALSE)
+```
+\
+
+Most of the correlations between the `merge_driv` variables follow similar interpretations as those of the `merge_con3` data set. What's nice to look at is the variables I modified myself. For example, `avg_lap_pos` is very positively correlated at with `driv_start_pos` which tells me that the average position a driver spends during a race is likely to be the position they started at. This is intuitively accurate as some races, like street races, can make overtaking difficult, so a driver's start position can have a huge impact on how their race plays out. This also applies to `driv_standing`. The very positive correlation of between `driv_standing` and `avg_lap_pos` is because the more races a driver spends as a back-marker (i.e. higher race position), the more drivers there are between them and the top of the standings.
+\
+\
+
+#### Constructor Position in Standings vs. Constructor Points
+```{r}
+ggplot(merge_con3, aes(x=con_pnts, y=con_pos)) +
+  geom_jitter(width=.5, size=1)+
+  geom_smooth(col="red", stat="smooth", level=FALSE)+
+  labs(title="Constructor Position in Standings vs. Constructor Points", y="Constructor position in standings throughout season", x="Constructor points earned at each race")
+```
+\
+
+Understandably so, the lower the points a constructor earns at a race, the more constructors are between your position and the top of the standings. The relationship here also does not seem linear. Once a constructor begins earning points, it is a bit easier to climb positions in the standings, as earning more points for yourself means your competition is earning less points. The trend here looks inverse exponential, but maybe I'm getting ahead of myself.
+\
+\
+
+
+#### Accumulated Constructor Points vs. Round
+Let's take a closer look at the relationship between `con_sum_pnts` and `round`, something I found interesting as it has to do with the progress and improvement of a constructor team throughout a race season.
+```{r}
+ggplot(merge_con3, aes(x=round, y=con_sum_pnts)) +
+  geom_jitter(width=.5, size=1)+
+  geom_smooth(method="lm", col="red")+
+  labs(title="Accumulated Constructor Points vs. Round", y="Constructor points accumulated throughout season", x="Round (number of race in order of season schedule)")
+```
+\
+
+It is interesting to see the majority of points to be somewhat plateauing in `con_sum_pnts` as `round` increases. You can also see the behavior of the handful of championship winning constructor teams that manage to have a steady increase in their accumulated points.
+\
+\
+
+
+
+#### Driver Points vs. Average Lap Position
+```{r}
+ggplot(merge_driv4, aes(x=avg_lap_pos, y=driv_pnts)) +
+  geom_jitter(width=.5, size=1)+
+  geom_smooth(method="lm", col="green")+
+  labs(title="Driver Points vs. Average Lap Position", x="Average lap position", y="Driver's points earned at each race")
+```
+\
+
+We can see that the back-markers, i.e. the drivers that happened to spend most of their race at I would say positions fifteen and greater, have very little chance with earning points. Most of the drivers with average lap position of fifteen and greater are lined up at zero points earned. Reasons drivers spend most of their time out of the points can vary from lacking race pace, having issues with the car, to poor tyre management, which are all valid reasons that keep them from making moves and overtaking to get into the points.
+\
+
+What's also interesting is that that thick pile of zero point earners extends all the way to the higher positions. It is not a shock for drivers who are consistently in top positions, even race leaders, to suddenly encounter a car failure and DNF from the race. It is totally possible and is part of the charm of F1.
+\
+\
+
+
+
+#### Average Lap Position vs. Driver Start Position
+```{r}
+ggplot(merge_driv4, aes(x=driv_start_pos, y=avg_lap_pos)) +
+  geom_jitter(width=.5, size=1)+
+  geom_smooth(method="lm", col="blue")+
+  labs(title="Average Lap Position vs. Driver Start Position", x="Driver's starting position", y="Average lap position")
+```
+\
+
+Like the correlation plot suggested, we have a clear positive relationship between average lap position and driver start position. Since, qualifying sessions determine driver start position, this also supports the idea that qualifying and sprint qualifying have incredible influence on the course of a race.
+\
+\
+
+
+
+## Model Set-Up
+<font size="3"> __Code in file model_building.rda__ </font>
+\
+
+Now we can start fitting models to see if we can predict `con_pos` and `driv_pnts`.
+\
+
+### Data Split
+We will be splitting our data sets into a training set and testing set. A majority of the data should be in the training set, which is what we build our model off of. Having separate training and testing sets allows us to see a truer test of how well our model performs. We need to test our model on data it has not been trained on to obtain a realistic idea of where our model is at. This also avoids over-fitting. If we were to test our model on data its been trained on, the results will be very accurate, but falsely so because it is not a true prediction at that point. Our testing data should be akin to a blind taste test for our model, but we build the model's connections and understandings of how to determine what it will be tasting.
+\
+
+We will split our data so that 70% of it goes to training and 30% of it is testing. We also stratify on the outcome variables `con_pos` and `driv_pnts` to make sure our data is split with an equal distribution of the response variables in our training and testing data.
+
+```{r eval=FALSE}
+# split into training and testing, strata on response variables
+con_split <- initial_split(merge_con3, prop = 0.7, strata = con_pos)
+con_train <- training(con_split)
+con_test <- testing(con_split)
+
+driv_split <- initial_split(merge_driv4, prop = 0.7, strata =driv_pnts)
+driv_train <- training(driv_split)
+driv_test <- testing(driv_split)
+
+# check split proportions
+nrow(con_train)/nrow(merge_con3)
+nrow(con_test)/nrow(merge_con3)
+nrow(driv_train)/nrow(merge_driv4)
+nrow(driv_test)/nrow(merge_driv4)
+```
+
+\
+\
+
+### Recipe
+We have to decide on a recipe, or formula, made up of our response variable and predictors, that can be used for many types of models later. From our `merge_con3` data set, we are using `con_pos` as a response variable. I want to include measures of points, home races (nationality), race order, year, and the specific circuit/track have influence on `con_pos`. So, for predictors, I have decided on: `constructorRef`, `con_pnts`, `con_wins`, `con_nation`, `season`, `round`, `circuitRef`, and `circ_country`.
+\
+
+For `merge_driv`, our response variable is `driv_pnts`. For predictors, I want to include: `driverRef`, `constructorRef`, `driv_positionText`, `driv_positionOrder`, `laps`, `fastestLapTime_rank`, `fastestLapSpeed`, `driv_start_pos`, `avg_lap_time`, `avg_lap_pos`, `driv_standing`, `driv_wins`, `season`, `round`, `circuitRef`, `circ_country`, `dob`, `nationality`, and `status`.
+\
+
+I made sure to include only one of `pnts` or `sum_pnts` variables because they are calculated dependently. Same thing with `fastestLapTime_rank` and `fastestLap` since one variable is a ranking of the other. Since `driv_start_pos` is inherently a result of qualifying sessions, I feel that `q_time` is less useful. Especially since `q_time` is a decimal amount of seconds and is more missing than not, I think excluding `q_time` is preferred. 
+\
+
+We will impute the missing values in continuous and dummy coded categorical variables.
+
+
+```{r eval=FALSE}
+# omit the small amount of missing values left
+merge_con3 <- merge_con3 %>%
+  na.omit()
+
+
+# CONSTRUCTOR RECIPE
+con_rec <-
+  recipe(con_pos ~ constructorRef+con_pnts+con_wins+con_nation+season+
+           round+circuitRef+circ_country, data = con_train) %>%
+  
+  # omit the small amount of missing values left
+  step_naomit(all_predictors())%>%
+  
+  # there are a hundreds of different constructors and circuits, so we need to collapse the less common ones into an other category
+  step_other(constructorRef, threshold=.1) %>%
+  step_other(con_nation, threshold=.1) %>%
+  step_other(circuitRef, threshold=.1) %>%
+  step_other(circ_country, threshold=.1) %>%
+  step_naomit()%>%
+  
+
+  # dummy code categorical variables
+  step_dummy(all_nominal_predictors()) %>%
+  
+  # remove variables (likely the dummy coded ones) that only contain a single value
+  step_zv(all_predictors())%>%
+  # step_novel(all_nominal_predictors())%>%
+  # step_unknown(all_nominal_predictors())%>%
+  
+  # normalizing
+  step_center(all_predictors()) %>%
+  step_scale(all_predictors())
+  
+
+# prep and bake
+prep(con_rec) %>%
+  bake(new_data = con_train)
+```
+\
+\
+
+### K-fold Cross Validation
+We will also use k-fold cross validation. K-fold cross-validation is a process of setting aside a portion of the training data to split into "k folds" or k number of sections, which within each k fold takes a turn in acting as the validation set while the rest of the k folds are training data. This is done in a manner so that each k times we train and assess, each training set and validation set is mutually exclusive. So, the process should be fitting, then assessing k times, before one final assessment on the actual testing split portion of data. Let's do 10 folds.
+```{r eval=FALSE}
+con_folds <- vfold_cv(con_train, v = 10)
+
+con_folds2 <- vfold_cv(con_train, v = 5)
+# for random forest for the sake of time
+```
+\
+\
+
+
+
+## Model Building
+At this point I decided to only work on the constructor data set for the sake of time.
+\
+
+Our process for building our models follows the same steps. The process is as follows:
+\
+
+1.    set up model with tuning parameters, the engine, and mode (either regression or classification)
+```{r eval=FALSE}
+# LINEAR MODEL
+lm_model<- linear_reg(engine="lm")
+
+
+# POLYNOMIAL REGRESSION
+# tune degree on the numerical variables (degree on these variables will amplify their effect)
+      # ex. a change in points and wins will affect constructor position more than normal
+con_polyrec <- con_rec %>%
+  step_poly(con_pnts,con_wins,season,round,degree=tune())
+
+poly_model <- linear_reg(mode="regression",
+                         engine="lm")
+
+
+# K NEAREST NEIGHBORS 
+# tune neighbors
+knn_model <- nearest_neighbor(neighbors = tune(),
+                              mode="regression",
+                              engine="kknn")
+
+
+# ELASTIC NET LINEAR REGRESSION
+# tune penalty and mixture
+en_model <- linear_reg(mixture=tune(),
+                       penalty=tune(),
+                       mode="regression",
+                       engine="glmnet")
+
+
+# ELASTIC NET W/ LASSO
+# tune penalty, set mixture to 1 for lasso penalty
+en_lasso <- linear_reg(penalty=tune(),
+                       mixture=1,
+                       mode="regression",
+                       engine="glmnet")
+
+
+# ELASTIC NET W/ RIDGE
+# tune penalty, set mixture to 0 for ridge penalty
+en_ridge <- linear_reg(penalty=tune(),
+                       mixture=0,
+                       mode="regression",
+                       engine="glmnet")
+
+
+# RANDOM FOREST
+# tune number of predictors (mtry), trees, and minimum number of values in each node (min_n)
+rf_model <- rand_forest(mtry = tune(), 
+                           trees = tune(), 
+                           min_n = tune()) %>%
+  set_engine("ranger", importance = "impurity") %>% 
+  set_mode("regression")
+```
+\
+
+2.    set up work flow with model and recipe
+```{r eval=FALSE}
+# LINEAR MODEL
+con_lmwflow <- workflow() %>%
+  add_model(lm_model) %>%
+  add_recipe(con_rec)
+
+
+
+# POLYNOMIAL REGRESSION
+con_polywflow <- workflow() %>%
+  add_model(poly_model) %>%
+  add_recipe(con_polyrec)
+
+
+# K NEAREST NEIGHBORS 
+con_knnwflow <- workflow() %>%
+  add_model(knn_model) %>%
+  add_recipe(con_rec)
+
+
+# ELASTIC NET LINEAR REGRESSION
+con_enwflow <- workflow() %>%
+  add_model(en_model) %>%
+  add_recipe(con_rec)
+
+
+
+# ELASTIC NET W/ LASSO
+con_lassowflow <- workflow() %>%
+  add_model(en_lasso) %>%
+  add_recipe(con_rec)
+
+
+# ELASTIC NET W/ RIDGE
+con_ridgewflow <- workflow() %>%
+  add_model(en_ridge) %>%
+  add_recipe(con_rec)
+
+
+
+# RANDOM FOREST
+con_rfwflow <- workflow() %>%
+  add_model(rf_model) %>%
+  add_recipe(con_rec)
+
+```
+\
+
+3.    set up tuning grid with ranges and levels for the tuning of parameters
+```{r eval=FALSE}
+# POLYNOMIAL REGRESSION
+# range degree from 1 to 5
+poly_grid <- grid_regular(degree(range=c(1,5)),
+                        levels=5)
+
+# K NEAREST NEIGHBORS 
+# range neighbors from 1 to 15
+knn_grid <- grid_regular(neighbors(range=c(1,15)),
+                        levels=5)
+
+
+# ELASTIC NET LINEAR REGRESSION
+en_grid <- grid_regular(penalty(range=c(0.01,3), trans=identity_trans()),
+                        mixture(range=c(0,1)),
+                        levels=10)
+
+
+# ELASTIC NET W/ LASSO and
+# ELASTIC NET W/ RIDGE
+lasso_ridge_grid <- grid_regular(penalty(range=c(0.01,3),
+                                         trans=identity_trans()), levels=10)
+
+
+# RANDOM FOREST
+# predictors (mtry) range depend on the recipe
+con_rfgrid <- grid_regular(mtry(range=c(1,9)),
+                        trees(range=c(200,400)),
+                        min_n(range=c(10,20)),
+                        levels=5)
+
+```
+\
+
+4.    tune model using workflow with k-fold cross validation, and tuning grid
+```{r eval=FALSE}
+# POLYNOMIAL REGRESSION
+con_polytune <- tune_grid(
+  con_polywflow,
+  resamples = con_folds,
+  grid = poly_grid)
+
+
+
+# K NEAREST NEIGHBORS
+con_knntune <- tune_grid(
+    con_knnwflow,
+    resamples = con_folds,
+    grid = knn_grid)
+
+
+
+# ELASTIC NET
+con_entune <- tune_grid(
+  con_enwflow,
+  resamples = con_folds,
+  grid = en_grid)
+
+
+# RIDGE REGRESSION
+con_ridgetune <- tune_grid(
+  con_ridgewflow,
+  resamples = con_folds,
+  grid = lasso_ridge_grid)
+
+
+
+# LASSO REGRESSION
+con_lassotune <- tune_grid(
+  con_lassowflow,
+  resamples = con_folds,
+  grid = lasso_ridge_grid)
+
+
+# RANDOM FOREST
+con_rftune <- tune_grid(
+  con_rfwflow,
+  resamples = con_folds2,
+  grid = con_rfgrid)
+
+```
+\
+
+5.    Collect metrics of tuned models. We want to minimize __root mean squared error (RMSE)__, so find the lowest RMSE for each tuned model.
+
+```{r}
+load("C://Users//waliang//Documents//UCSB//third year//pstat 131//model_building_final.rda")
+
+load("C://Users//waliang//Documents//UCSB//third year//pstat 131//model_results_final.rda")
+```
+
+```{r eval=FALSE}
+lm_rmse <- collect_metrics(con_lmfit) %>% 
+  slice(1)
+
+ridge_rmse <- collect_metrics(con_ridgetune) %>% 
+  arrange(mean) %>%
+  filter(.metric=="rmse") %>%
+  slice(1)
+
+# LASSO REGRESSION
+lasso_rmse <- collect_metrics(con_lassotune) %>% 
+  arrange(mean) %>% 
+  filter(.metric=="rmse") %>%
+  slice(1)
+
+# POLYNOMIAL REGRESSION
+poly_rmse <- collect_metrics(con_polytune) %>% 
+  arrange(mean) %>% 
+  filter(.metric=="rmse") %>%
+  slice(1)
+
+# K NEAREST NEIGHBORS
+knn_rmse <- collect_metrics(con_knntune) %>% 
+  arrange(mean) %>% 
+  filter(.metric=="rmse") %>%
+  slice(1)
+
+# ELASTIC NET
+elastic_rmse <- collect_metrics(con_entune) %>% 
+  arrange(mean)%>% 
+  filter(.metric=="rmse") %>%
+  slice(1)
+```
+
+```{r collapse=TRUE}
+lm_rmse
+ridge_rmse
+lasso_rmse
+poly_rmse
+knn_rmse
+elastic_rmse
+rf_rmse
+```
+\
+\
+
+
+
+## Model Results
+<font size="3"> __Code in file model_results.rda__ </font>
+\
+
+Let's compare the models from before that minimize RMSE to find best performing one out of them all.
+\
+
+The model that minimizes RMSE the most is the __Random Forest model__ with `mtry = 5`, `trees = 400`, and `min_n = 20`, which achieves a mean RMSE of 2.370339 across 5 folds.
+\
+\
+
+### Elastic Net
+```{r}
+autoplot(con_entune, metric="rmse")
+```
+\
+
+The model with `lasso = 0` penalty, the red line, and low mixture minimize RMSE the most. As lasso penalty increases, our model performs increasingly worse. This makes sense because a high penalty will reduce the coefficients to our predictors, effectively downplaying the effect our predictors have on our response.
+\
+
+Also, when mixture penalty is present from 0.01 to 0.1, the discrepancies between models of different lasso penalties are small in performance level as they are when mixture penalty is very high. This makes sense because our ridge regression model (`mixture = 0`) performed with a higher RMSE of 3.451871 than our lasso regression (`mixture = 1`) model (RMSE of 3.449157).
+\
+\
+
+### Polynomial Regression
+```{r}
+autoplot(con_polytune, metric="rmse")
+```
+\
+
+As the degree of our continuous variables increase from 1 to 5, the RMSE decreases steadily. This aligned with my expectations because our actual data, like `con_pnts` and `con_wins`, are based on singular points and wins where small amounts can make a difference in determining a constructor's place in the standings. Often times, a constructor's position in the standings will only be guaranteed a the last race, because competition between competitors will last the entire season. So, by adding degrees, we are amplifying the differences between our data points. Thus, the effect of each predictor will become more and more influential. It seems a degree of 5 would perform the best, but I can also assume that an even higher degree would lower the RMSE even more.
+\
+\
+
+### K-Nearest Neighbors
+```{r}
+autoplot(con_knntune, metric="rmse")
+```
+\
+
+Similarly, the knn model performs increasingly better when the neighbors increase. Our knn model with 15 neighbors managed to minimize the RMSE the most, except for the random forest model, which is not entriely surprising. Also, the non-linear models, like knn and random forest, seemed to perform the best, so our data may not be non-linear.
+\
+\
+
+### Random Forest
+```{r}
+autoplot(con_rftune, metric="rmse")
+```
+\
+
+Focusing on how the tuning parameters work on minimizing RMSE, it looks like minimal node size and number of trees have almost no difference in affecting RMSE. However, number of randomly selected predictors `mtry` looks to minimize RMSE the most when it is larger (about 2 to 8), though there is a slight dip in RMSE across all models at `mtry = 5`. Notice how we ranged `mtry` from 1 to 8. We wouldn't want the model to reach `mtry = 9` because if all trees have the same first split, then the trees are not independent.
+\
+\
+\
+
+
+## Results of Best Model
+```{r}
+# parameters of best model: mtry=5, trees=400, min_n=20
+rf_rmse
+```
+\
+
+### Fitting to Training
+```{r}
+# fit best model to training
+best_rf_train <- select_best(con_rftune, metric="rmse")
+
+# finalize workflow
+final_model_wflow <- finalize_workflow(con_rfwflow, best_rf_train)
+final_model_fit <- fit(final_model_wflow, data=con_train)
+```
+\
+\
+
+### Testing
+Now let's apply the model on testing data.
+```{r}
+con_tibble <- predict(final_model_fit, new_data = con_test %>% select(-con_pos))
+con_tibble <- bind_cols(con_tibble, con_test %>% select(con_pos))
+
+con_metric <- metric_set(rmse)
+con_tibble_metric <- con_metric(con_tibble, truth=con_pos, estimate=.pred)
+con_tibble_metric
+```
+\
+
+The model performed even better achieving a RMSE of 2.361256 on the testing data. Since RMSE is a measure of predicted outcome values related to actual outcome values, and our response variable `con_pos` is supposed to range from 1 to twenty-something, a RMSE of 2.361256 is not too bad. Our predicted standing positions might be a few places off in the standings, which is not ideal, but it's manageable.
+
+
+
+\
+\
+
+
+## Conclusion
+The best performing model is the random forest model, while the more linear, simple models, like the linear regression model and elastic net models, performed poorly in comparison. I was not entirely surprised by how our models performed because predicting constructors standings did not seem like a linear trend intuitively. There are a lot of factors that come into play, a lot of which isn't even included or properly represented in our data here, like more detailed qualifying data, receiving grid place penalties from the FIA, having on-going car issues, etc. With all this in consideration, I did not think a basic linear model could cover what we needed.
+\
+
+As for next steps, I will probably spend a bit more time to carefully go over everything and do the random forest model with a proper amount of folds and wider ranges for the tuning parameters. I would also spend more time on manipulating the data and perhaps even include data for our rookie drivers.
+\
+
+Overall, this project was successful and a great challenge in compiling data and applying something I am genuinely interested in and passionate about to academic skills I've only recently learned in this class.
+
+\
+\
+
+
+## Sources
+Data comes from the [Ergast Developer API](http://ergast.com/mrd/db/).
+\
+
+Information about Formula 1 and the FIA comes from my own personal knowledge, the [Official F1 Website](https://www.formula1.com/), and [Wikipedia](https://en.wikipedia.org/wiki/Formula_One).
