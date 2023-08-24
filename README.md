@@ -47,7 +47,7 @@ Exploratory data analysis code is included in R script file `eda.R`. This file i
 This file includes steps to set up the machine learning models. This involves training and testing data splits and building a recipe with the desired response variable and predictors. Using the `recipe()` tidymodels function allows us to dummy code categorical predictors and impute missing values in the predictors within the step of creating the recipe. I further set up k-fold cross validation and apply different machine learning models to the recipe. I developed the following models to have a thorough discussion of the truly best fitting model.
 <table border = "0">
   <tr>
-    <td>linear</td> <td>polynomial regression</td> <td>k nearest neighbors</td> <td>elastic net linear regression</td>
+    <td>linear</td> <td>polynomial regression</td> <td>k nearest neighbors (knn)</td> <td>elastic net linear regression</td>
   </tr>
   <tr>
     <td>elastic net with lasso regression</td> <td>elastic net with ridge regression</td> <td>random forest</td>
@@ -62,5 +62,9 @@ To build the models, we use the following steps:
 - tune each model with `tune_grid()` using the corresponding workflow, k-fold cross validation, and tuning grid
 - collect __root mean squared error (RMSE)__ metric of tuned models and find the lowest RMSE for each model
 
-
 <br />
+
+### `model_results_final.rda`
+The corresponding `.R` script file is not in here, but the results are saved in this `.rda` file. I analyzed the performance of the more noteworthy models: elastic net, polynomial regression, knn, and random forest. For a thorough explanation and interpretation of the parameters and performance of these models, refer to the completed presentation [here](https://liang-sarah.github.io/F1_ML/#Model_Results).
+
+After analyzing RMSE depending on the tuning parameters, I conclude the random forest model with parameters `mtry=5`, `trees=400`, and `min_n=20` is the best performing model. I use that model to fit on the testing split and once again analyze the RMSE.
